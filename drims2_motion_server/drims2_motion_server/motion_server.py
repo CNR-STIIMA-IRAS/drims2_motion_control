@@ -245,11 +245,12 @@ class MotionServer(Node):
         pass
 
     def _move_to_configuration_with_retries(self, robot_configuration: List[float], max_attempts: int) -> MoveItErrorCodes:
+        result_code = MoveItErrorCodes()
         if not robot_configuration or len(robot_configuration) != len(self.joint_names):
             self.get_logger().error("Invalid robot configuration provided for motion.")
-            return MoveItErrorCodes.INVALID_ROBOT_STATE
-        
-        result_code = MoveItErrorCodes()
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code
+
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Moving to configuration")
 
@@ -271,16 +272,18 @@ class MotionServer(Node):
         return result_code
 
     def _move_to_pose_with_retries(self, goal_pose: PoseStamped, cartesian: bool, max_attempts: int) -> MoveItErrorCodes:
+        result_code = MoveItErrorCodes()
         if not goal_pose or not isinstance(goal_pose, PoseStamped):
             self.get_logger().error("Invalid goal pose provided for motion.")
-            return MoveItErrorCodes.INVALID_ROBOT_STATE
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code
         
         cartesian_max_step = self.get_parameter('cartesian_max_step').get_parameter_value().double_value
         cartesian_fraction_threshold = self.get_parameter('cartesian_fraction_threshold').get_parameter_value().double_value
         tolerance_position = self.get_parameter('tolerance_position').get_parameter_value().double_value
         tolerance_orientation = self.get_parameter('tolerance_orientation').get_parameter_value().double_value
 
-        result_code = MoveItErrorCodes()
+        
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Moving to configuration")
 
