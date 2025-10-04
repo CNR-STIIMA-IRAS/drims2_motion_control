@@ -17,7 +17,13 @@ def main() -> None:
     # result = motion_client.move_to_pose(pose_msg)
     # print("Move to pose result:", result)
 
-    # # Example: move_to_joint
+    # Example: gripper_command
+    # The command measurement units depends on your hw. 
+    # In this, case we assume it is in [cm]
+    motion_client.gripper_command(0.02)  
+
+
+    # Example: move_to_joint
     joint_goal = [
         -0.16410449298697685,    # shoulder_pan_joint
         -1.3820258857637684,     # shoulder_lift_joint
@@ -33,7 +39,9 @@ def main() -> None:
     # motion_client.attach_object("dice", "ur10e_tool0")
     # result = motion_client.move_to_pose(pose_msg)
     # motion_client.detach_object("dice")
-    # motion_client.gripper_command(0.4)  # Open gripper
+    motion_client.gripper_command(0.0)  # Close gripper
+
+
     rclpy.shutdown()
 
 if __name__ == '__main__':
