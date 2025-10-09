@@ -18,7 +18,7 @@
   <depend>drims2_msgs</depend>
   <depend>control_msgs</depend>
   <depend>moveit_msgs</depend>
-  <depend>moveit2</depend>
+  <depend>moveit</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
