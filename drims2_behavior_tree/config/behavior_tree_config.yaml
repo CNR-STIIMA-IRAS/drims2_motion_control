@@ -1,6 +1,6 @@
 bt_executer_node:
   ros__parameters:
-    bt_xml_file: example.xml
+    bt_xml_file: application.xml
     plugins:
       - check_dice_face
     ros_plugins:
@@ -10,4 +10,6 @@ bt_executer_node:
       - dice_identification
       - attach_object
       - detach_object
+      - omron_navigate_to_pose
+      - can_transform
     bt_package: drims2_behavior_tree

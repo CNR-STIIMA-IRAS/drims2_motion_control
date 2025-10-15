@@ -14,6 +14,8 @@ find_package(drims2_msgs REQUIRED)
 find_package(control_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(moveit_core REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
 
 set(dependencies
   rclcpp
@@ -23,6 +25,8 @@ set(dependencies
   control_msgs
   moveit_msgs
   moveit_core
+  tf2_ros
+  tf2
 )
     
 include_directories(include)
@@ -64,6 +68,11 @@ add_library(check_dice_face SHARED
     src/leaves/check_dice_face.cpp
 )
 list(APPEND plugin_libs check_dice_face)
+
+add_library(can_transform SHARED
+    src/leaves/can_transform.cpp
+)
+list(APPEND plugin_libs can_transform)
 
 foreach(bt_plugin ${plugin_libs})
   # target_link_libraries(${bt_plugin} ${dependencies})
