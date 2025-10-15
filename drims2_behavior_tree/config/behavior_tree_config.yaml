@@ -10,6 +10,5 @@ bt_executer_node:
       - dice_identification
       - attach_object
       - detach_object
-      - omron_navigate_to_pose
       - can_transform
     bt_package: drims2_behavior_tree
