@@ -1,0 +1,13 @@
+# Goal
+float64[] joint_start
+geometry_msgs/PoseStamped pose_target
+bool cartesian_motion
+
+---
+# Result
+moveit_msgs/MoveItErrorCodes result
+trajectory_msgs/JointTrajectory trajectory
+
+---
+# Feedback
+float32 progress

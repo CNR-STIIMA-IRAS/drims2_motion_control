@@ -2,14 +2,16 @@ from typing import Optional, Tuple, List
 from threading import Thread
 
 import rclpy
+from moveit_msgs.action import ExecuteTrajectory
 from rclpy.action import ActionServer, CancelResponse
 from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node
 
-from drims2_msgs.action import MoveToPose, MoveToJoint
+from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
 from drims2_msgs.srv import AttachObject, DetachObject
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from tf2_ros import Buffer, TransformListener, TransformException, TransformBroadcaster
+from trajectory_msgs.msg import JointTrajectory
 
 from pymoveit2 import MoveIt2, MoveIt2State
 from moveit_msgs.msg import MoveItErrorCodes
@@ -84,6 +86,27 @@ class MotionServer(Node):
             "move_to_joint",
             execute_callback=self.move_to_joint_callback,
             cancel_callback=self.move_to_joint_cancel_callback,
+        )
+        self.plan_to_pose_action_server = ActionServer(
+            self,
+            PlanToPose,
+            "plan_to_pose",
+            execute_callback=self.plan_to_pose_callback,
+            cancel_callback=self.plan_to_pose_cancel_callback,
+        )
+        self.plan_to_joint_action_server = ActionServer(
+            self,
+            PlanToJoint,
+            "plan_to_joint",
+            execute_callback=self.plan_to_joint_callback,
+            cancel_callback=self.plan_to_joint_cancel_callback,
+        )
+        self.execute_trajectory_action_server = ActionServer(
+            self,
+            ExecutePlannedTrajectory,
+            "execute_planned_trajectory",
+            execute_callback=self.execute_planned_trajectory_callback,
+            cancel_callback=self.execute_planned_trajectory_cancel_callback,
         )
         self.attach_service = self.create_service(
             AttachObject,
@@ -271,6 +294,40 @@ class MotionServer(Node):
         result_code.val = motion_result.val if motion_result and partial_result else MoveItErrorCodes.FAILURE
         return result_code
 
+    def _plan_to_configuration_with_retries(self, target_configuration: List[float], start_configuration: List[float], max_attempts: int) \
+            -> Tuple[MoveItErrorCodes, JointTrajectory]:
+        result_code = MoveItErrorCodes()
+        if not target_configuration or len(target_configuration) != len(self.joint_names):
+            self.get_logger().error("Invalid robot target configuration provided for motion.")
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code, None
+
+        if len(start_configuration)!=0 and len(start_configuration) != len(self.joint_names):
+            self.get_logger().error("Invalid robot start configuration provided for motion.")
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code, None
+
+        for attempt in range(1, max_attempts + 1):
+            self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Planning to configuration")
+
+            trj = self.moveit2.plan(
+                joint_positions=target_configuration,
+                start_joint_state=start_configuration if len(start_configuration)>0 else None, # if None, take current state
+                joint_names=self.joint_names
+            )
+
+            if trj is not None:
+                self.get_logger().info("Motion planned successfully.")
+                result_code.val = MoveItErrorCodes.SUCCESS
+                return result_code, trj
+
+            self.get_logger().warn(f"Planning failed. Retrying...")
+
+        # If all attempts fail
+        result_code.val = MoveItErrorCodes.FAILURE
+        return result_code, None
+
+
     def _move_to_pose_with_retries(self, goal_pose: PoseStamped, cartesian: bool, max_attempts: int) -> MoveItErrorCodes:
         result_code = MoveItErrorCodes()
         if not goal_pose or not isinstance(goal_pose, PoseStamped):
@@ -311,7 +368,69 @@ class MotionServer(Node):
         result_code.val = motion_result.val if motion_result else MoveItErrorCodes.FAILURE
         return result_code
 
-    
+    def _plan_to_pose_with_retries(self, goal_pose: PoseStamped, start_configuration: List[float], cartesian: bool,
+                                   max_attempts: int) -> Tuple[MoveItErrorCodes, JointTrajectory]:
+        result_code = MoveItErrorCodes()
+        if not goal_pose or not isinstance(goal_pose, PoseStamped):
+            self.get_logger().error("Invalid goal pose provided for motion.")
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code, None
+
+        if len(start_configuration) != 0 and len(start_configuration) != len(self.joint_names):
+            self.get_logger().error("Invalid robot start configuration provided for motion.")
+            result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
+            return result_code, None
+
+        cartesian_max_step = self.get_parameter('cartesian_max_step').get_parameter_value().double_value
+        cartesian_fraction_threshold = self.get_parameter(
+            'cartesian_fraction_threshold').get_parameter_value().double_value
+        tolerance_position = self.get_parameter('tolerance_position').get_parameter_value().double_value
+        tolerance_orientation = self.get_parameter('tolerance_orientation').get_parameter_value().double_value
+
+        for attempt in range(1, max_attempts + 1):
+            self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Planning to configuration")
+
+            trj = self.moveit2.plan(
+                pose=goal_pose,
+                cartesian=cartesian,
+                max_step=cartesian_max_step,
+                cartesian_fraction_threshold=cartesian_fraction_threshold,
+                tolerance_position=tolerance_position,
+                tolerance_orientation=tolerance_orientation,
+                start_joint_state=start_configuration if len(start_configuration)>0 else None, # if None, take current state
+            )
+
+            if trj is not None:
+                self.get_logger().info("Motion planned successfully.")
+                result_code.val = MoveItErrorCodes.SUCCESS
+                return result_code, trj
+
+            self.get_logger().warn(f"Planning failed. Retrying...")
+
+        # If all attempts fail
+        result_code.val = MoveItErrorCodes.FAILURE
+        return result_code, None
+
+    def _execute_planned_trajectory(self, trajectory: JointTrajectory) -> MoveItErrorCodes:
+        result_code = MoveItErrorCodes()
+
+        # check trj is valid
+
+        self.moveit2.execute(trajectory)
+        partial_result = self.moveit2.wait_until_executed()
+        motion_result = self.moveit2.get_last_execution_error_code()
+
+        self.get_logger().info(f"Partial result: {partial_result}")
+        self.get_logger().info(f"Motion result: {motion_result}")
+
+        if partial_result and motion_result and motion_result.val == MoveItErrorCodes.SUCCESS:
+            self.get_logger().info("Motion executed successfully.")
+            return motion_result
+
+        self.get_logger().warn(f"Motion failed with code {motion_result.val if motion_result else 'N/A'}")
+        result_code.val = motion_result.val if motion_result and partial_result else MoveItErrorCodes.FAILURE
+        return result_code
+
     def _compute_ik(self, goal_pose: PoseStamped) -> Tuple[Optional[List[float]], MoveItErrorCodes]:
         """
         Compute IK for the given pose.
@@ -379,7 +498,6 @@ class MotionServer(Node):
 
         return positions, response.error_code
 
-
     def move_to_joint_cancel_callback(self, goal_handle):
         pass
 
@@ -394,6 +512,96 @@ class MotionServer(Node):
         
         goal_handle.succeed()
         return action_result
+
+    def execute_planned_trajectory_cancel_callback(self, goal_handle):
+        pass
+
+    def execute_planned_trajectory_callback(self, goal_handle: ServerGoalHandle) -> ExecutePlannedTrajectory.Result:
+        self.get_logger().info(f"Executing trajectory...")
+
+        motion_result = self._execute_planned_trajectory(goal_handle.request.trajectory)
+        action_result = ExecutePlannedTrajectory.Result()
+        action_result.result.val = motion_result.val
+
+        goal_handle.succeed()
+        return action_result
+
+    def plan_to_joint_cancel_callback(self, goal_handle):
+        pass
+
+    def plan_to_joint_callback(self, goal_handle: ServerGoalHandle) -> PlanToJoint.Result:
+
+        joints_goal = goal_handle.request.joint_target
+        joints_start = goal_handle.request.joint_start
+        if joints_start:
+            self.get_logger().info(f"Planning from joint {joints_start} to {joints_goal}")
+        else:
+            self.get_logger().info(f"Planning from current config to {joints_goal}")
+
+        motion_result, trj = self._plan_to_configuration_with_retries(joints_goal, joints_start, self.max_motion_retries)
+
+        action_result = PlanToJoint.Result()
+        action_result.result.val = motion_result.val
+        if trj is not None:
+            action_result.trajectory = trj
+
+        goal_handle.succeed()
+        return action_result
+
+    def plan_to_pose_cancel_callback(self, goal_handle):
+        pass
+
+    def plan_to_pose_callback(self, goal_handle: ServerGoalHandle) -> PlanToPose.Result:
+        goal_pose: PoseStamped = goal_handle.request.pose_target
+        cartesian_motion = goal_handle.request.cartesian_motion
+
+        joints_start = goal_handle.request.joint_start
+        if joints_start:
+            self.get_logger().info(f"Planning from joint {joints_start} to goal pose.")
+        else:
+            self.get_logger().info(f"Planning from current config to goal pose.")
+
+        goal_pose = self._apply_virtual_offset(goal_pose)
+        self.broadcast_pose_goal_tf(goal_pose)  # For debugging purposes show the goal pose
+
+        # Preparing action result
+        action_result = PlanToPose.Result()
+
+        max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
+        if cartesian_motion:
+            motion_result, trj = self._plan_to_pose_with_retries(goal_pose=goal_pose,
+                                                                start_configuration=joints_start,
+                                                                cartesian=True,
+                                                                max_attempts=max_motion_retries)
+            action_result.result.val = motion_result.val
+        else:
+            max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
+            last_ik_result_code = MoveItErrorCodes()
+            for attempt in range(max_ik_retries + 1):
+                robot_configuration, ik_result_code = self._compute_ik(goal_pose)
+
+                if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
+                    self.get_logger().info(f"IK solution found: {robot_configuration}")
+                    break
+            else:
+                last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
+
+                self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
+                self.get_logger().warn(
+                    f"Plan to pose is aborted due to no IK solution after {max_ik_retries} attempts.")
+                goal_handle.abort()
+                action_result.result.val = last_ik_result_code.val
+                return action_result
+
+            motion_result, trj = self._plan_to_configuration_with_retries(robot_configuration, joints_start, max_motion_retries)
+            action_result.result.val = motion_result.val
+
+        if trj is not None:
+            action_result.trajectory = trj
+
+        goal_handle.succeed()
+        return action_result
+
 
     def broadcast_pose_goal_tf(self, pose_goal):
         t = TransformStamped()

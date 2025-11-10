@@ -17,6 +17,9 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveToJoint.action"
   "action/MoveToPose.action"
+  "action/PlanToJoint.action"
+  "action/PlanToPose.action"
+  "action/ExecutePlannedTrajectory.action"
   "srv/DiceIdentification.srv"
   "srv/AttachObject.srv"
   "srv/DetachObject.srv"

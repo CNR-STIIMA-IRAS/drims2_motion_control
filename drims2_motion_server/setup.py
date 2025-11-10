@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             f'motion_server = {package_name}.motion_server:main',
             f'motion_client_test = examples.motion_client_test:main',
+            f'motion_client_plan_test = examples.motion_client_plan_test:main',
             f'fake_dice_identification_server = examples.fake_dice_identification_server:main',
         ],
     },

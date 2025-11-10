@@ -1,0 +1,12 @@
+# Goal
+float64[] joint_start
+float64[] joint_target
+
+---
+# Result
+moveit_msgs/MoveItErrorCodes result
+trajectory_msgs/JointTrajectory trajectory
+
+---
+# Feedback
+float32 progress
