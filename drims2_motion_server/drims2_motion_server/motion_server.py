@@ -42,6 +42,7 @@ class MotionServer(Node):
         self.declare_parameter("max_motion_retries", 3)
         self.declare_parameter("max_ik_retries", 3)
         self.declare_parameter("ik_timeout", 20)
+        self.declare_parameter("ik_avoid_collisions", False)        
         self.declare_parameter("virtual_end_effector", 'tip') # Used for better visual usage (think movements in tip frame) 
 
         self.move_group_name = self.get_parameter('move_group_name').get_parameter_value().string_value
@@ -444,7 +445,7 @@ class MotionServer(Node):
         ik_req = GetPositionIK.Request()
         ik_req.ik_request.group_name = self.move_group_name
         ik_req.ik_request.pose_stamped = goal_pose
-        ik_req.ik_request.avoid_collisions = False
+        ik_req.ik_request.avoid_collisions = self.get_parameter('ik_avoid_collisions').get_parameter_value().integer_value
         ik_req.ik_request.ik_link_name = self.end_effector_name
         ik_req.ik_request.timeout.sec = self.get_parameter('ik_timeout').get_parameter_value().integer_value
 

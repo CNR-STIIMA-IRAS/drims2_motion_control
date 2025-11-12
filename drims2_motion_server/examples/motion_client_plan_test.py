@@ -28,14 +28,24 @@ def main() -> None:
     motion_client.execute_last_planned_trajectory()
 
     # Example: plan_to_pose
-    pose_msg = PoseStamped()
-    pose_msg.header.frame_id = "tip" # relative motion wrt tip frame
-    pose_msg.pose.position.x = 0.0
-    pose_msg.pose.position.y = 0.0
-    pose_msg.pose.position.z = 0.15
-    pose_msg.pose.orientation.w = 1.0
+    # pose_msg = PoseStamped()
+    # pose_msg.header.frame_id = "tip" # relative motion wrt tip frame
+    # pose_msg.pose.position.x = 0.0
+    # pose_msg.pose.position.y = 0.0
+    # pose_msg.pose.position.z = 0.15
+    # pose_msg.pose.orientation.w = 1.0
 
-    result, trj = motion_client.plan_to_pose(pose=pose_msg, joint_start=None, cartesian_motion=True)
+    pose_msg = PoseStamped()
+    pose_msg.header.frame_id = "world" # relative motion wrt tip frame
+    pose_msg.pose.position.x = 0.65
+    pose_msg.pose.position.y = 0.28
+    pose_msg.pose.position.z = 0.97
+    pose_msg.pose.orientation.w = 0.5
+    pose_msg.pose.orientation.x = -0.5
+    pose_msg.pose.orientation.y = 0.5
+    pose_msg.pose.orientation.z = -0.5
+
+    result, trj = motion_client.plan_to_pose(pose=pose_msg, joint_start=None, cartesian_motion=False)
     print("Plan to pose result:", result)
     print("Planned trj:", trj)
 
