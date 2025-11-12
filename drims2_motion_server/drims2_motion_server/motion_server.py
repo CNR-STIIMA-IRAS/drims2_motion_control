@@ -244,23 +244,26 @@ class MotionServer(Node):
         else:
             max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
             last_ik_result_code = MoveItErrorCodes()
-            for attempt in range(max_ik_retries + 1):
-                robot_configuration, ik_result_code = self._compute_ik(goal_pose)
+            for planning_attempt in range(max_motion_retries + 1):
+                for ik_attempt in range(max_ik_retries + 1):
+                    robot_configuration, ik_result_code = self._compute_ik(goal_pose)
 
-                if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
-                    self.get_logger().info(f"IK solution found: {robot_configuration}")
-                    break
-            else:
-                last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
+                    if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
+                        self.get_logger().info(f"IK solution found: {robot_configuration}")
+                        break
+                else:
+                    last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
 
-                self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
-                self.get_logger().warn(f"Move to pose is aborted due to no IK solution after {max_ik_retries} attempts.")
-                goal_handle.abort()
-                action_result.result.val = last_ik_result_code.val
-                return action_result
+                    self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
+                    self.get_logger().warn(f"Move to pose is aborted due to no IK solution after {max_ik_retries} attempts.")
+                    goal_handle.abort()
+                    action_result.result.val = last_ik_result_code.val
+                    return action_result
 
-            motion_result = self._move_to_configuration_with_retries(robot_configuration, max_motion_retries)
-            action_result.result.val = motion_result.val
+                motion_result = self._move_to_configuration_with_retries(robot_configuration, 1)
+                action_result.result.val = motion_result.val
+                if motion_result.val == MoveItErrorCodes.SUCCESS:
+                    break            
         
         goal_handle.succeed()
         return action_result
@@ -445,7 +448,7 @@ class MotionServer(Node):
         ik_req = GetPositionIK.Request()
         ik_req.ik_request.group_name = self.move_group_name
         ik_req.ik_request.pose_stamped = goal_pose
-        ik_req.ik_request.avoid_collisions = self.get_parameter('ik_avoid_collisions').get_parameter_value().integer_value
+        ik_req.ik_request.avoid_collisions = self.get_parameter('ik_avoid_collisions').get_parameter_value().bool_value
         ik_req.ik_request.ik_link_name = self.end_effector_name
         ik_req.ik_request.timeout.sec = self.get_parameter('ik_timeout').get_parameter_value().integer_value
 
@@ -578,24 +581,41 @@ class MotionServer(Node):
         else:
             max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
             last_ik_result_code = MoveItErrorCodes()
-            for attempt in range(max_ik_retries + 1):
-                robot_configuration, ik_result_code = self._compute_ik(goal_pose)
 
-                if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
-                    self.get_logger().info(f"IK solution found: {robot_configuration}")
-                    break
-            else:
-                last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
+            for planning_attempt in range(max_motion_retries + 1):
+                robot_configuration = None
+                ik_result_code = MoveItErrorCodes.NO_IK_SOLUTION
+                for ik_attempt in range(max_ik_retries + 1):
+                    # if joints_start is available, look for the closest IK solution
+                    if joints_start is not None:
+                        best_squared_norm = 999999.9
+                        for _ in range(5):
+                            tmp, tmp_ik_result_code = self._compute_ik(goal_pose)
+                            if tmp_ik_result_code.val == MoveItErrorCodes.SUCCESS and tmp is not None:
+                                squared_norm = sum((x - y) ** 2 for x, y in zip(tmp, joints_start))
+                                if squared_norm < best_squared_norm:
+                                    robot_configuration = tmp
+                                    ik_result_code = tmp_ik_result_code
+                    else:
+                        robot_configuration, ik_result_code = self._compute_ik(goal_pose)
 
-                self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
-                self.get_logger().warn(
-                    f"Plan to pose is aborted due to no IK solution after {max_ik_retries} attempts.")
-                goal_handle.abort()
-                action_result.result.val = last_ik_result_code.val
-                return action_result
+                    if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
+                        self.get_logger().info(f"IK solution found: {robot_configuration}")
+                        break
+                else:
+                    last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
 
-            motion_result, trj = self._plan_to_configuration_with_retries(robot_configuration, joints_start, max_motion_retries)
-            action_result.result.val = motion_result.val
+                    self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
+                    self.get_logger().warn(
+                        f"Plan to pose is aborted due to no IK solution after {max_ik_retries} attempts.")
+                    goal_handle.abort()
+                    action_result.result.val = last_ik_result_code.val
+                    return action_result
+
+                motion_result, trj = self._plan_to_configuration_with_retries(robot_configuration, joints_start, 1)
+                action_result.result.val = motion_result.val
+                if motion_result.val == MoveItErrorCodes.SUCCESS:
+                    break  
 
         if trj is not None:
             action_result.trajectory = trj
