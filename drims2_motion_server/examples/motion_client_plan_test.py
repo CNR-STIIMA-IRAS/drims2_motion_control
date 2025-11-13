@@ -10,6 +10,8 @@ def main() -> None:
     rclpy.init()
     motion_client = MotionClient()
 
+
+
     # Example: plan_to_joint
     joint_goal = [
         -0.16410449298697685,    # shoulder_pan_joint
@@ -20,7 +22,17 @@ def main() -> None:
         -0.16411033649582998,    # wrist_3_joint
     ]
 
-    result, trj = motion_client.plan_to_joint(joint_target=joint_goal, joint_start=None)
+
+    joint_start = [
+        0.0,
+        -1.57,
+        1.57,
+        -1.57,
+        -1.57,
+        0.0
+    ]
+
+    result, trj = motion_client.plan_to_joint(joint_target=joint_goal, joint_start=joint_start)
 
     print("Plan to joint result:", result)
     print("Planned trj:", trj)
@@ -45,7 +57,7 @@ def main() -> None:
     pose_msg.pose.orientation.y = 0.5
     pose_msg.pose.orientation.z = -0.5
 
-    result, trj = motion_client.plan_to_pose(pose=pose_msg, joint_start=None, cartesian_motion=False)
+    result, trj = motion_client.plan_to_pose(pose=pose_msg, joint_start=joint_goal, cartesian_motion=False)
     print("Plan to pose result:", result)
     print("Planned trj:", trj)
 

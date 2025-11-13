@@ -14,10 +14,13 @@ from tf2_ros import Buffer, TransformListener, TransformException, TransformBroa
 from trajectory_msgs.msg import JointTrajectory
 
 from pymoveit2 import MoveIt2, MoveIt2State
+from pymoveit2.moveit2 import init_joint_state
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.srv import GetPositionIK
 from drims2_motion_server.drims2_utils import transform_to_affine, pose_stamped_to_affine, affine_to_transform, transform_to_pose_stamped
 import numpy as np
+
+
 
 class MotionServer(Node):
 
@@ -314,9 +317,13 @@ class MotionServer(Node):
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Planning to configuration")
 
+
+
             trj = self.moveit2.plan(
                 joint_positions=target_configuration,
-                start_joint_state=start_configuration if len(start_configuration)>0 else None, # if None, take current state
+                start_joint_state=init_joint_state(
+                    joint_names=self.joint_names,
+                    joint_positions=start_configuration) if len(start_configuration)>0 else None, # if None, take current state
                 joint_names=self.joint_names
             )
 
@@ -401,7 +408,9 @@ class MotionServer(Node):
                 cartesian_fraction_threshold=cartesian_fraction_threshold,
                 tolerance_position=tolerance_position,
                 tolerance_orientation=tolerance_orientation,
-                start_joint_state=start_configuration if len(start_configuration)>0 else None, # if None, take current state
+                start_joint_state=init_joint_state(
+                    joint_names=self.joint_names,
+                    joint_positions=start_configuration) if len(start_configuration)>0 else None, # if None, take current state
             )
 
             if trj is not None:
