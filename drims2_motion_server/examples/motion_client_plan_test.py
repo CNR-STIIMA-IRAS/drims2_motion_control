@@ -14,8 +14,8 @@ def main() -> None:
 
     # Example: plan_to_joint
     joint_goal = [
-        -0.16410449298697685,    # shoulder_pan_joint
-        -1.6820258857637684,     # shoulder_lift_joint
+        1.57,    # shoulder_pan_joint
+        -3.0258857637684,     # shoulder_lift_joint
         1.6139817698694139,      # elbow_joint
         -1.8017236579269869,     # wrist_1_joint
         -1.5701870879802997,     # wrist_2_joint
@@ -32,8 +32,7 @@ def main() -> None:
         0.0
     ]
 
-    result, trj = motion_client.plan_to_joint(joint_target=joint_goal, joint_start=joint_start)
-
+    result, trj = motion_client.plan_to_joint(joint_target=joint_goal, joint_start=None, velocity_scaling=0.5)
     print("Plan to joint result:", result)
     print("Planned trj:", trj)
 
@@ -56,6 +55,10 @@ def main() -> None:
     pose_msg.pose.orientation.x = -0.5
     pose_msg.pose.orientation.y = 0.5
     pose_msg.pose.orientation.z = -0.5
+
+    result, config = motion_client.solve_ik(pose=pose_msg)
+    print("IK result:", result)
+    print("IK solution:", config)
 
     result, trj = motion_client.plan_to_pose(pose=pose_msg, joint_start=joint_goal, cartesian_motion=False)
     print("Plan to pose result:", result)

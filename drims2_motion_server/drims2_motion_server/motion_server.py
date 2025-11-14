@@ -8,8 +8,9 @@ from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node
 
 from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
-from drims2_msgs.srv import AttachObject, DetachObject
+from drims2_msgs.srv import AttachObject, DetachObject, SolveIK
 from geometry_msgs.msg import PoseStamped, TransformStamped
+from sympy.physics.units import acceleration
 from tf2_ros import Buffer, TransformListener, TransformException, TransformBroadcaster
 from trajectory_msgs.msg import JointTrajectory
 
@@ -45,15 +46,17 @@ class MotionServer(Node):
         self.declare_parameter("max_motion_retries", 3)
         self.declare_parameter("max_ik_retries", 3)
         self.declare_parameter("ik_timeout", 20)
-        self.declare_parameter("ik_avoid_collisions", False)        
+        self.declare_parameter("max_ik_iterations", 1) # Used for better visual usage (think movements in tip frame)
+        self.declare_parameter("ik_avoid_collisions", False)
         self.declare_parameter("virtual_end_effector", 'tip') # Used for better visual usage (think movements in tip frame) 
 
         self.move_group_name = self.get_parameter('move_group_name').get_parameter_value().string_value
         self.end_effector_name = self.get_parameter('end_effector_name').get_parameter_value().string_value
         self.base_link_name = self.get_parameter('base_link_name').get_parameter_value().string_value
         self.joint_names = self.get_parameter('joint_names').get_parameter_value().string_array_value
-        self.max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
         self.virtual_end_effector = self.get_parameter('virtual_end_effector').get_parameter_value().string_value
+        self.global_velocity_scaling = self.get_parameter('max_velocity').get_parameter_value().double_value
+        self.global_acceleration_scaling = self.get_parameter('max_acceleration').get_parameter_value().double_value
 
         self.internal_node = Node(
             'motion_server_moveit2_internal_node', use_global_arguments=False, namespace=self.get_namespace())
@@ -70,8 +73,8 @@ class MotionServer(Node):
                 use_move_group_action=self.get_parameter('use_move_group_action').get_parameter_value().bool_value
             )
             self.moveit2.planner_id = self.get_parameter('planner_id').get_parameter_value().string_value
-            self.moveit2.max_velocity = self.get_parameter('max_velocity').get_parameter_value().double_value
-            self.moveit2.max_acceleration = self.get_parameter('max_acceleration').get_parameter_value().double_value
+            # self.moveit2.max_velocity = self.get_parameter('max_velocity').get_parameter_value().double_value
+            # self.moveit2.max_acceleration = self.get_parameter('max_acceleration').get_parameter_value().double_value
             self.moveit2.allowed_planning_time = self.get_parameter('allowed_planning_time').get_parameter_value().double_value
             self.moveit2.cartesian_avoid_collisions = self.get_parameter('cartesian_avoid_collisions').get_parameter_value().bool_value
         except RuntimeError as exception:
@@ -121,6 +124,11 @@ class MotionServer(Node):
             DetachObject,
             'detach_object',
             self.detach_object_callback
+        )
+        self.solve_ik_service = self.create_service(
+            SolveIK,
+            'solve_ik',
+            self.solve_ik_callback
         )
         self.compute_ik_client = self.create_client(
             GetPositionIK,
@@ -231,6 +239,8 @@ class MotionServer(Node):
     def move_to_pose_callback(self, goal_handle: ServerGoalHandle) -> MoveToPose.Result:
         goal_pose: PoseStamped = goal_handle.request.pose_target
         cartesian_motion = goal_handle.request.cartesian_motion
+        velocity_scaling = goal_handle.request.max_velocity_scaling
+        acceleration_scaling = goal_handle.request.max_acceleration_scaling
         
         goal_pose = self._apply_virtual_offset(goal_pose)
         self.broadcast_pose_goal_tf(goal_pose)  # For debugging purposes show the goal pose
@@ -242,7 +252,9 @@ class MotionServer(Node):
         if cartesian_motion:
             motion_result = self._move_to_pose_with_retries(goal_pose=goal_pose, 
                                                             cartesian=True, 
-                                                            max_attempts=max_motion_retries)
+                                                            max_attempts=max_motion_retries,
+                                                            velocity_scaling=velocity_scaling,
+                                                            acceleration_scaling=acceleration_scaling)
             action_result.result.val = motion_result.val
         else:
             max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
@@ -274,12 +286,17 @@ class MotionServer(Node):
     def move_to_pose_cancel_callback(self, goal_handle):
         pass
 
-    def _move_to_configuration_with_retries(self, robot_configuration: List[float], max_attempts: int) -> MoveItErrorCodes:
+    def _move_to_configuration_with_retries(self, robot_configuration: List[float], max_attempts: int,
+                                            velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
+            -> MoveItErrorCodes:
         result_code = MoveItErrorCodes()
         if not robot_configuration or len(robot_configuration) != len(self.joint_names):
             self.get_logger().error("Invalid robot configuration provided for motion.")
             result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
             return result_code
+
+        self.moveit2.max_velocity = self.global_velocity_scaling * velocity_scaling
+        self.moveit2.max_acceleration = self.global_acceleration_scaling * acceleration_scaling
 
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Moving to configuration")
@@ -301,7 +318,8 @@ class MotionServer(Node):
         result_code.val = motion_result.val if motion_result and partial_result else MoveItErrorCodes.FAILURE
         return result_code
 
-    def _plan_to_configuration_with_retries(self, target_configuration: List[float], start_configuration: List[float], max_attempts: int) \
+    def _plan_to_configuration_with_retries(self, target_configuration: List[float], start_configuration: List[float],
+                                            max_attempts: int, velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
             -> Tuple[MoveItErrorCodes, JointTrajectory]:
         result_code = MoveItErrorCodes()
         if not target_configuration or len(target_configuration) != len(self.joint_names):
@@ -314,11 +332,11 @@ class MotionServer(Node):
             result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
             return result_code, None
 
+        self.moveit2.max_velocity = self.global_velocity_scaling * velocity_scaling
+        self.moveit2.max_acceleration = self.global_acceleration_scaling * acceleration_scaling
+
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Planning to configuration")
-
-
-
             trj = self.moveit2.plan(
                 joint_positions=target_configuration,
                 start_joint_state=init_joint_state(
@@ -339,7 +357,8 @@ class MotionServer(Node):
         return result_code, None
 
 
-    def _move_to_pose_with_retries(self, goal_pose: PoseStamped, cartesian: bool, max_attempts: int) -> MoveItErrorCodes:
+    def _move_to_pose_with_retries(self, goal_pose: PoseStamped, cartesian: bool, max_attempts: int,
+                                   velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) -> MoveItErrorCodes:
         result_code = MoveItErrorCodes()
         if not goal_pose or not isinstance(goal_pose, PoseStamped):
             self.get_logger().error("Invalid goal pose provided for motion.")
@@ -351,7 +370,9 @@ class MotionServer(Node):
         tolerance_position = self.get_parameter('tolerance_position').get_parameter_value().double_value
         tolerance_orientation = self.get_parameter('tolerance_orientation').get_parameter_value().double_value
 
-        
+        self.moveit2.max_velocity = self.global_velocity_scaling * velocity_scaling
+        self.moveit2.max_acceleration = self.global_acceleration_scaling * acceleration_scaling
+
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Moving to configuration")
 
@@ -380,7 +401,8 @@ class MotionServer(Node):
         return result_code
 
     def _plan_to_pose_with_retries(self, goal_pose: PoseStamped, start_configuration: List[float], cartesian: bool,
-                                   max_attempts: int) -> Tuple[MoveItErrorCodes, JointTrajectory]:
+                                   max_attempts: int, velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
+            -> Tuple[MoveItErrorCodes, JointTrajectory]:
         result_code = MoveItErrorCodes()
         if not goal_pose or not isinstance(goal_pose, PoseStamped):
             self.get_logger().error("Invalid goal pose provided for motion.")
@@ -397,6 +419,9 @@ class MotionServer(Node):
             'cartesian_fraction_threshold').get_parameter_value().double_value
         tolerance_position = self.get_parameter('tolerance_position').get_parameter_value().double_value
         tolerance_orientation = self.get_parameter('tolerance_orientation').get_parameter_value().double_value
+
+        self.moveit2.max_velocity = self.global_velocity_scaling * velocity_scaling
+        self.moveit2.max_acceleration = self.global_acceleration_scaling * acceleration_scaling
 
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Planning to configuration")
@@ -515,11 +540,13 @@ class MotionServer(Node):
         pass
 
     def move_to_joint_callback(self, goal_handle: ServerGoalHandle) -> MoveToJoint.Result:
-        
         joints_goal = goal_handle.request.joint_target
-        self.get_logger().info(f"Moving to joint: {joints_goal}")
+        velocity_scaling = goal_handle.request.max_velocity_scaling
+        acceleration_scaling = goal_handle.request.max_acceleration_scaling
 
-        motion_result = self._move_to_configuration_with_retries(joints_goal, self.max_motion_retries)
+        self.get_logger().info(f"Moving to joint: {joints_goal}")
+        max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
+        motion_result = self._move_to_configuration_with_retries(joints_goal, max_motion_retries, velocity_scaling, acceleration_scaling)
         action_result = MoveToJoint.Result()
         action_result.result.val = motion_result.val
         
@@ -546,12 +573,15 @@ class MotionServer(Node):
 
         joints_goal = goal_handle.request.joint_target
         joints_start = goal_handle.request.joint_start
+        velocity_scaling = goal_handle.request.max_velocity_scaling
+        acceleration_scaling = goal_handle.request.max_acceleration_scaling
         if joints_start:
             self.get_logger().info(f"Planning from joint {joints_start} to {joints_goal}")
         else:
             self.get_logger().info(f"Planning from current config to {joints_goal}")
 
-        motion_result, trj = self._plan_to_configuration_with_retries(joints_goal, joints_start, self.max_motion_retries)
+        max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
+        motion_result, trj = self._plan_to_configuration_with_retries(joints_goal, joints_start, max_motion_retries, velocity_scaling, acceleration_scaling)
 
         action_result = PlanToJoint.Result()
         action_result.result.val = motion_result.val
@@ -569,6 +599,8 @@ class MotionServer(Node):
         cartesian_motion = goal_handle.request.cartesian_motion
 
         joints_start = goal_handle.request.joint_start
+        velocity_scaling = goal_handle.request.max_velocity_scaling
+        acceleration_scaling = goal_handle.request.max_acceleration_scaling
         if joints_start:
             self.get_logger().info(f"Planning from joint {joints_start} to goal pose.")
         else:
@@ -580,17 +612,21 @@ class MotionServer(Node):
         # Preparing action result
         action_result = PlanToPose.Result()
 
+
         max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
         if cartesian_motion:
             motion_result, trj = self._plan_to_pose_with_retries(goal_pose=goal_pose,
                                                                 start_configuration=joints_start,
                                                                 cartesian=True,
-                                                                max_attempts=max_motion_retries)
+                                                                max_attempts=max_motion_retries,
+                                                                velocity_scaling=velocity_scaling,
+                                                                acceleration_scaling=acceleration_scaling)
             action_result.result.val = motion_result.val
         else:
             max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
-            last_ik_result_code = MoveItErrorCodes()
+            max_ik_iterations = self.get_parameter('max_ik_iterations').get_parameter_value().integer_value
 
+            last_ik_result_code = MoveItErrorCodes()
             for planning_attempt in range(max_motion_retries + 1):
                 robot_configuration = None
                 ik_result_code = MoveItErrorCodes.NO_IK_SOLUTION
@@ -598,7 +634,7 @@ class MotionServer(Node):
                     # if joints_start is available, look for the closest IK solution
                     if joints_start is not None:
                         best_squared_norm = 999999.9
-                        for _ in range(5):
+                        for _ in range(max_ik_iterations):
                             tmp, tmp_ik_result_code = self._compute_ik(goal_pose)
                             if tmp_ik_result_code.val == MoveItErrorCodes.SUCCESS and tmp is not None:
                                 squared_norm = sum((x - y) ** 2 for x, y in zip(tmp, joints_start))
@@ -647,6 +683,30 @@ class MotionServer(Node):
         t.transform.rotation = pose_goal.pose.orientation
 
         self.tf_broadcaster.sendTransform(t)
+
+    def solve_ik_callback(self, request, response):
+        self.get_logger().info("Solving IK.")
+
+        goal_pose: PoseStamped = request.pose
+        max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
+        last_ik_result_code = MoveItErrorCodes()
+        for ik_attempt in range(max_ik_retries + 1):
+            robot_configuration, ik_result_code = self._compute_ik(goal_pose)
+
+            if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
+                break
+        else:
+            last_ik_result_code.val = ik_result_code.val if ik_result_code is not None else MoveItErrorCodes.NO_IK_SOLUTION
+
+            self.get_logger().warn(f"IK computation failed with code {last_ik_result_code.val}")
+            response.result.val = last_ik_result_code.val
+            return response
+
+        if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
+            self.get_logger().info(f"IK solution found: {robot_configuration}")
+            response.result.val = ik_result_code.val
+            response.ik_solution = robot_configuration
+        return response
 
     def attach_object_callback(self, request, response):
         self.get_logger().info(f"Attaching object '{request.object_id}' to frame '{request.target_frame_id}'")

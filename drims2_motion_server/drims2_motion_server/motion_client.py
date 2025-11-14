@@ -5,7 +5,7 @@ from rclpy.action import ActionClient
 from typing import Tuple, Optional, List
 
 from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
-from drims2_msgs.srv import AttachObject, DetachObject
+from drims2_msgs.srv import AttachObject, DetachObject, SolveIK
 
 from geometry_msgs.msg import PoseStamped
 from control_msgs.action import GripperCommand
@@ -67,6 +67,7 @@ class MotionClient(Node):
         self.gripper_client = ActionClient(self, GripperCommand, gripper_action_name)
         self.attach_object_client = self.create_client(AttachObject, 'attach_object')
         self.detach_object_client = self.create_client(DetachObject, 'detach_object')
+        self.solve_ik_client = self.create_client(SolveIK, 'solve_ik')
 
         self.last_planned_trj: JointTrajectory = None
 
@@ -87,13 +88,15 @@ class MotionClient(Node):
         if not self.gripper_client.wait_for_server(timeout_sec=10.0):
             raise RuntimeError("GripperCommand action server not available")
 
-    def move_to_pose(self, pose: PoseStamped, 
-                     cartesian_motion: bool = False) -> MoveItErrorCodes:
+    def move_to_pose(self, pose: PoseStamped, cartesian_motion: bool = False,
+                     velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) -> MoveItErrorCodes:
         """Move the robot to a target pose.
 
         Args:
             pose (PoseStamped): Target pose for the robot.
             cartesian_motion (bool, optional): If True, uses Cartesian trajectories. Defaults to False.
+            velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
+            acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
 
         Returns:
             MoveItErrorCodes: Result code returned by the motion planner.
@@ -107,6 +110,8 @@ class MotionClient(Node):
         goal_msg = MoveToPose.Goal()
         goal_msg.pose_target = pose
         goal_msg.cartesian_motion = cartesian_motion
+        goal_msg.max_velocity_scaling = velocity_scaling
+        goal_msg.max_acceleration_scaling = acceleration_scaling
 
         future = self.move_to_pose_client.send_goal_async(goal_msg)
         rclpy.spin_until_future_complete(self, future)
@@ -120,12 +125,14 @@ class MotionClient(Node):
         
         return result_future.result().result.result
 
-    def move_to_joint(self, joint_positions: list[float]) -> MoveItErrorCodes:
+    def move_to_joint(self, joint_positions: list[float], velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
+            -> MoveItErrorCodes:
         """Move the robot to a specific joint configuration.
 
         Args:
             joint_positions (list[float]): List of target joint values.
-
+            velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
+            acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
         Returns:
             MoveItErrorCodes: Result code returned by the motion planner.
 
@@ -137,6 +144,8 @@ class MotionClient(Node):
 
         goal_msg = MoveToJoint.Goal()
         goal_msg.joint_target = joint_positions
+        goal_msg.max_velocity_scaling = velocity_scaling
+        goal_msg.max_acceleration_scaling = acceleration_scaling
 
         future = self.move_to_joint_client.send_goal_async(goal_msg)
         rclpy.spin_until_future_complete(self, future)
@@ -151,14 +160,16 @@ class MotionClient(Node):
         return result_future.result().result.result
 
     def plan_to_pose(self, pose: PoseStamped, joint_start: list[float] = None,
-                     cartesian_motion: bool = False) -> Tuple[MoveItErrorCodes, JointTrajectory]:
+                     cartesian_motion: bool = False, velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
+            -> Tuple[MoveItErrorCodes, JointTrajectory]:
         """Move the robot to a target pose.
 
         Args:
             pose (PoseStamped): Target pose for the robot.
             joint_start (list[float]): List of start joint values. If None, use current move_group config.
             cartesian_motion (bool, optional): If True, uses Cartesian trajectories. Defaults to False.
-
+            velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
+            acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
         Returns:
             MoveItErrorCodes: Result code returned by the motion planner.
 
@@ -171,6 +182,8 @@ class MotionClient(Node):
         goal_msg = PlanToPose.Goal()
         goal_msg.pose_target = pose
         goal_msg.cartesian_motion = cartesian_motion
+        goal_msg.max_velocity_scaling = velocity_scaling
+        goal_msg.max_acceleration_scaling = acceleration_scaling
         if joint_start is not None:
             goal_msg.joint_start = joint_start
 
@@ -189,12 +202,15 @@ class MotionClient(Node):
 
         return result_future.result().result.result, result_future.result().result.trajectory
 
-    def plan_to_joint(self, joint_target: list[float], joint_start: list[float] = None) -> Tuple[MoveItErrorCodes, JointTrajectory]:
+    def plan_to_joint(self, joint_target: list[float], joint_start: list[float] = None,
+                      velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) -> Tuple[MoveItErrorCodes, JointTrajectory]:
         """Move the robot to a specific joint configuration.
 
         Args:
             joint_target (list[float]): List of target joint values.
             joint_start (list[float]): List of start joint values. If None, use current move_group config.
+            velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
+            acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
 
         Returns:
             MoveItErrorCodes: Result code returned by the motion planner
@@ -208,6 +224,8 @@ class MotionClient(Node):
 
         goal_msg = PlanToJoint.Goal()
         goal_msg.joint_target = joint_target
+        goal_msg.max_velocity_scaling = velocity_scaling
+        goal_msg.max_acceleration_scaling = acceleration_scaling
         if joint_start is not None:
             goal_msg.joint_start = joint_start
 
@@ -319,6 +337,29 @@ class MotionClient(Node):
         rclpy.spin_until_future_complete(self, future)
 
         return future.result().success
+
+    def solve_ik(self, pose: PoseStamped) -> Tuple[MoveItErrorCodes, List[float]]:
+        """Compute the inverse kinematics for the given pose
+
+        Args:
+            pose (PoseStamped): Pose of the robot.
+
+        Returns:
+            MoveItErrorCodes: Result code returned by the IK solver
+            List[float]: IK solution.
+        Raises:
+            RuntimeError: If the service is not available.
+        """
+        if not self.solve_ik_client.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError("SolveIK service not available")
+
+        request = SolveIK.Request()
+        request.pose  = pose
+
+        future = self.solve_ik_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+
+        return future.result().result, future.result().ik_solution
 
     def gripper_command(self, 
                         position: float, 
