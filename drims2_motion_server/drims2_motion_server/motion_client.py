@@ -338,7 +338,7 @@ class MotionClient(Node):
 
         return future.result().success
 
-    def solve_ik(self, pose: PoseStamped) -> Tuple[MoveItErrorCodes, List[float]]:
+    def solve_ik(self, pose: PoseStamped, seed: Optional[List[float]]=None) -> Tuple[MoveItErrorCodes, List[float]]:
         """Compute the inverse kinematics for the given pose
 
         Args:
@@ -355,7 +355,7 @@ class MotionClient(Node):
 
         request = SolveIK.Request()
         request.pose  = pose
-
+        request.seed = seed 
         future = self.solve_ik_client.call_async(request)
         rclpy.spin_until_future_complete(self, future)
 

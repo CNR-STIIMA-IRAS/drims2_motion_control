@@ -469,7 +469,7 @@ class MotionServer(Node):
         result_code.val = motion_result.val if motion_result and partial_result else MoveItErrorCodes.FAILURE
         return result_code
 
-    def _compute_ik(self, goal_pose: PoseStamped) -> Tuple[Optional[List[float]], MoveItErrorCodes]:
+    def _compute_ik(self, goal_pose: PoseStamped, seed: Optional[List[float]] = None) -> Tuple[Optional[List[float]], MoveItErrorCodes]:
         """
         Compute IK for the given pose.
 
@@ -488,15 +488,20 @@ class MotionServer(Node):
 
         # Return code
         return_code = MoveItErrorCodes()
-
-        # Current joint state as seed
-        self.moveit2.wait_new_joint_state()
-        if self.moveit2.joint_state is not None:
-            ik_req.ik_request.robot_state.joint_state = self.moveit2.joint_state
+        
+        # Define seed
+        if seed is not None:
+            # Use provided seed
+            ik_req.ik_request.robot_state.joint_state.name = self.joint_names
+            ik_req.ik_request.robot_state.joint_state.position = seed
         else:
-            self.get_logger().error("Joint state not yet available, cannot compute IK.")
-            return_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
-            return None, return_code
+            # Current joint state as seed (default)
+            self.moveit2.wait_new_joint_state()
+            if self.moveit2.joint_state is not None:
+                ik_req.ik_request.robot_state.joint_state = self.moveit2.joint_state
+            else:
+                self.get_logger().error("Joint state not yet available, cannot compute IK.")
+                return None, MoveItErrorCodes.INVALID_ROBOT_STATE
 
         # Call the IK service
         future = self.compute_ik_client.call_async(ik_req)
@@ -688,10 +693,12 @@ class MotionServer(Node):
         self.get_logger().info("Solving IK.")
 
         goal_pose: PoseStamped = request.pose
+        seed: List[float] = request.seed if request.seed is not None else None
+
         max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
         last_ik_result_code = MoveItErrorCodes()
         for ik_attempt in range(max_ik_retries + 1):
-            robot_configuration, ik_result_code = self._compute_ik(goal_pose)
+            robot_configuration, ik_result_code = self._compute_ik(goal_pose,seed)
 
             if ik_result_code.val == MoveItErrorCodes.SUCCESS and robot_configuration is not None:
                 break
