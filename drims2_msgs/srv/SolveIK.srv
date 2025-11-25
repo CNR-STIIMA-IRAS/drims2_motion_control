@@ -1,0 +1,8 @@
+# Request
+geometry_msgs/PoseStamped pose
+float64[] seed
+
+---
+# Response
+moveit_msgs/MoveItErrorCodes result
+float64[] ik_solution

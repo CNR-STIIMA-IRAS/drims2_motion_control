@@ -1,12 +1,13 @@
 # Goal
-geometry_msgs/PoseStamped pose_target
-bool cartesian_motion
+float64[] joint_start
+float64[] joint_target
 float64 max_velocity_scaling 1.0
 float64 max_acceleration_scaling 1.0
 
 ---
 # Result
 moveit_msgs/MoveItErrorCodes result
+trajectory_msgs/JointTrajectory trajectory
 
 ---
 # Feedback

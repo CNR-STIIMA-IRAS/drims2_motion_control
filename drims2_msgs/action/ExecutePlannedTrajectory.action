@@ -1,0 +1,10 @@
+# Goal
+trajectory_msgs/JointTrajectory trajectory
+
+---
+# Result
+moveit_msgs/MoveItErrorCodes result
+
+---
+# Feedback
+float32 progress
