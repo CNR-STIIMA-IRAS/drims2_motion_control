@@ -693,7 +693,7 @@ class MotionServer(Node):
         self.get_logger().info("Solving IK.")
 
         goal_pose: PoseStamped = request.pose
-        seed: List[float] = request.seed if request.seed is not None else None
+        seed: List[float] = request.seed if len(request.seed)>0 else None
 
         max_ik_retries = self.get_parameter('max_ik_retries').get_parameter_value().integer_value
         last_ik_result_code = MoveItErrorCodes()

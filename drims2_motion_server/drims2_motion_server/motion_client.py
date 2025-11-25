@@ -355,7 +355,8 @@ class MotionClient(Node):
 
         request = SolveIK.Request()
         request.pose  = pose
-        request.seed = seed 
+        if seed is not None:
+            request.seed = seed
         future = self.solve_ik_client.call_async(request)
         rclpy.spin_until_future_complete(self, future)
 
