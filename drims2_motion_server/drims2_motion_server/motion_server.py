@@ -18,7 +18,7 @@ from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.moveit2 import init_joint_state
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.srv import GetPositionIK
-from drims2_motion_server.drims2_utils import transform_to_affine, pose_stamped_to_affine, affine_to_transform, transform_to_pose_stamped
+from drims2_motion_server.drims2_utils import transform_to_affine, pose_stamped_to_affine, affine_to_transform, transform_to_pose_stamped, build_affine
 import numpy as np
 
 
@@ -217,15 +217,15 @@ class MotionServer(Node):
         if self.T_ee_from_virtual is None:
             return goal_pose
         
-        T_base_link_referece = self._lookup_transform(
+        T_base_link_reference = self._lookup_transform(
             target_frame=self.base_link_name,
             source_frame=goal_pose.header.frame_id
         )
         
-        M_base_link_referece = transform_to_affine(T_base_link_referece)
+        M_base_link_reference = transform_to_affine(T_base_link_reference)
         M_reference_goal = pose_stamped_to_affine(goal_pose)
         M_ee_from_virtual = transform_to_affine(self.T_ee_from_virtual)
-        M_base_virtual_goal = M_base_link_referece @ M_reference_goal @ np.linalg.inv(M_ee_from_virtual)
+        M_base_virtual_goal = M_base_link_reference @ M_reference_goal @ np.linalg.inv(M_ee_from_virtual)
 
         T_base_virtual_goal = affine_to_transform(M_base_virtual_goal, self.base_link_name, 'pose_goal_frame')
 
@@ -236,13 +236,65 @@ class MotionServer(Node):
         )
         return transformed_pose
 
+    def _apply_relative_offset(self, relative_pose: PoseStamped) -> PoseStamped:
+
+        if self.end_effector_name == relative_pose.header.frame_id:
+            return relative_pose
+
+        # == Frame F = relative_pose.header.frame_id ==
+        if self.base_link_name == relative_pose.header.frame_id:
+            M_base_frame = np.eye(4)
+        else:
+            T_base_frame = self._lookup_transform(
+                target_frame=self.base_link_name,
+                source_frame=relative_pose.header.frame_id
+            )
+            M_base_frame = transform_to_affine(T_base_frame)
+
+        # == Current EE in base ==
+        T_base_ee = self._lookup_transform(
+            target_frame=self.base_link_name,
+            source_frame=self.end_effector_name
+        )
+        M_base_ee = transform_to_affine(T_base_ee)
+        R_ee = M_base_ee[:3, :3]
+        p_ee = M_base_ee[:3, 3]
+
+        # == Relative motion expressed in frame F ==
+        M_frame_delta = pose_stamped_to_affine(relative_pose)
+
+        # Convert delta to BASE frame
+        M_base_delta = M_base_frame @ M_frame_delta
+        R_delta = M_base_delta[:3, :3]
+        p_delta = M_base_delta[:3, 3]
+
+        # --- Apply translation in base frame ---
+        p_goal = p_ee + p_delta
+
+        # --- Apply rotation about TCP using base-frame axes ---
+        R_goal = R_delta @ R_ee
+
+        # Compose goal in BASE frame
+        M_base_goal = np.eye(4)
+        M_base_goal[:3, :3] = R_goal
+        M_base_goal[:3, 3] = p_goal
+
+        T_base_goal = affine_to_transform(
+            M_base_goal, self.base_link_name, "ee_goal"
+        )
+
+        return transform_to_pose_stamped(T_base_goal)
+
     def move_to_pose_callback(self, goal_handle: ServerGoalHandle) -> MoveToPose.Result:
         goal_pose: PoseStamped = goal_handle.request.pose_target
         cartesian_motion = goal_handle.request.cartesian_motion
         velocity_scaling = goal_handle.request.max_velocity_scaling
         acceleration_scaling = goal_handle.request.max_acceleration_scaling
-        
+
         goal_pose = self._apply_virtual_offset(goal_pose)
+        if goal_handle.request.relative_motion:
+            goal_pose = self._apply_relative_offset(goal_pose)
+
         self.broadcast_pose_goal_tf(goal_pose)  # For debugging purposes show the goal pose
 
         # Preparing action result
@@ -612,6 +664,9 @@ class MotionServer(Node):
             self.get_logger().info(f"Planning from current config to goal pose.")
 
         goal_pose = self._apply_virtual_offset(goal_pose)
+        if goal_handle.request.relative_motion:
+            goal_pose = self._apply_relative_offset(goal_pose)
+
         self.broadcast_pose_goal_tf(goal_pose)  # For debugging purposes show the goal pose
 
         # Preparing action result

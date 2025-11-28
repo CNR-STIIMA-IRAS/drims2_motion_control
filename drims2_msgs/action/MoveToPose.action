@@ -1,6 +1,7 @@
 # Goal
 geometry_msgs/PoseStamped pose_target
-bool cartesian_motion
+bool cartesian_motion 0
+bool relative_motion 0
 float64 max_velocity_scaling 1.0
 float64 max_acceleration_scaling 1.0
 

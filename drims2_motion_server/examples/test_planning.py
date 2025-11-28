@@ -103,7 +103,7 @@ def ik(pos, quat, q_guess, n_ik, motion_client):
                     print("OK", flush=True)
                     return q
 
-        if q_best is None or best_err > np.pi:
+        if q_best is None or best_err > 2*np.pi:
             raise Warning(f"Ocio batocio te funziona mia la IK. Best err: {best_err}")
         elif best_err > np.pi/4:
             print("FAILED", flush=True)
