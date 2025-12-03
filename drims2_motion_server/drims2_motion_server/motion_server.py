@@ -1,3 +1,4 @@
+import time
 from typing import Optional, Tuple, List
 from threading import Thread
 
@@ -327,7 +328,11 @@ class MotionServer(Node):
                     action_result.result.val = last_ik_result_code.val
                     return action_result
 
-                motion_result = self._move_to_configuration_with_retries(robot_configuration, 1)
+                print("planning to :", robot_configuration, flush=True)
+                motion_result = self._move_to_configuration_with_retries(robot_configuration,
+                                                                         1,
+                                                                         velocity_scaling=velocity_scaling,
+                                                                         acceleration_scaling=acceleration_scaling)
                 action_result.result.val = motion_result.val
                 if motion_result.val == MoveItErrorCodes.SUCCESS:
                     break            
@@ -355,6 +360,7 @@ class MotionServer(Node):
 
             self.moveit2.move_to_configuration(robot_configuration, self.joint_names)
             partial_result = self.moveit2.wait_until_executed()
+
             motion_result = self.moveit2.get_last_execution_error_code()
 
             self.get_logger().info(f"Partial result: {partial_result}")
@@ -664,6 +670,8 @@ class MotionServer(Node):
             self.get_logger().info(f"Planning from current config to goal pose.")
 
         goal_pose = self._apply_virtual_offset(goal_pose)
+
+        # TODO: when a start state is specified, should the relative displacement be computed from the start state instead of the current state?
         if goal_handle.request.relative_motion:
             goal_pose = self._apply_relative_offset(goal_pose)
 
@@ -717,7 +725,11 @@ class MotionServer(Node):
                     action_result.result.val = last_ik_result_code.val
                     return action_result
 
-                motion_result, trj = self._plan_to_configuration_with_retries(robot_configuration, joints_start, 1)
+                motion_result, trj = self._plan_to_configuration_with_retries(robot_configuration, joints_start,
+                                                                              max_attempts=1,
+                                                                              velocity_scaling=velocity_scaling,
+                                                                              acceleration_scaling=acceleration_scaling
+                                                                              )
                 action_result.result.val = motion_result.val
                 if motion_result.val == MoveItErrorCodes.SUCCESS:
                     break  

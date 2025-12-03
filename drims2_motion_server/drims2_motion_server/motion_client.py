@@ -88,13 +88,14 @@ class MotionClient(Node):
         if not self.gripper_client.wait_for_server(timeout_sec=10.0):
             raise RuntimeError("GripperCommand action server not available")
 
-    def move_to_pose(self, pose: PoseStamped, cartesian_motion: bool = False,
+    def move_to_pose(self, pose: PoseStamped, cartesian_motion: bool = False, relative_motion = False,
                      velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) -> MoveItErrorCodes:
         """Move the robot to a target pose.
 
         Args:
             pose (PoseStamped): Target pose for the robot.
             cartesian_motion (bool, optional): If True, uses Cartesian trajectories. Defaults to False.
+            relative_motion (bool, optional): If True, consider pose as a displacement from the robot initial state. Defaults to False.
             velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
             acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
 
@@ -110,6 +111,7 @@ class MotionClient(Node):
         goal_msg = MoveToPose.Goal()
         goal_msg.pose_target = pose
         goal_msg.cartesian_motion = cartesian_motion
+        goal_msg.relative_motion = relative_motion
         goal_msg.max_velocity_scaling = velocity_scaling
         goal_msg.max_acceleration_scaling = acceleration_scaling
 
@@ -160,7 +162,8 @@ class MotionClient(Node):
         return result_future.result().result.result
 
     def plan_to_pose(self, pose: PoseStamped, joint_start: list[float] = None,
-                     cartesian_motion: bool = False, velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
+                     cartesian_motion: bool = False, relative_motion: bool = False,
+                     velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) \
             -> Tuple[MoveItErrorCodes, JointTrajectory]:
         """Move the robot to a target pose.
 
@@ -168,6 +171,7 @@ class MotionClient(Node):
             pose (PoseStamped): Target pose for the robot.
             joint_start (list[float]): List of start joint values. If None, use current move_group config.
             cartesian_motion (bool, optional): If True, uses Cartesian trajectories. Defaults to False.
+            relative_motion (bool, optional): If True, consider pose as a displacement from the robot initial state. Defaults to False.
             velocity_scaling (float): Velocity scaling for planning the trajectory. Will be multiplied by max_velocity
             acceleration_scaling (float): Acceleration scaling for planning the trajectory. Will be multiplied by max_acceleration
         Returns:
@@ -182,6 +186,7 @@ class MotionClient(Node):
         goal_msg = PlanToPose.Goal()
         goal_msg.pose_target = pose
         goal_msg.cartesian_motion = cartesian_motion
+        goal_msg.relative_motion = relative_motion
         goal_msg.max_velocity_scaling = velocity_scaling
         goal_msg.max_acceleration_scaling = acceleration_scaling
         if joint_start is not None:
