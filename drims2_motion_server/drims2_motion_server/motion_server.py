@@ -9,7 +9,7 @@ from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node
 
 from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
-from drims2_msgs.srv import AttachObject, DetachObject, SolveIK
+from drims2_msgs.srv import AttachObject, DetachObject, GetIK, GetFK
 from geometry_msgs.msg import PoseStamped, TransformStamped
 from sympy.physics.units import acceleration
 from tf2_ros import Buffer, TransformListener, TransformException, TransformBroadcaster
@@ -18,7 +18,7 @@ from trajectory_msgs.msg import JointTrajectory
 from pymoveit2 import MoveIt2, MoveIt2State
 from pymoveit2.moveit2 import init_joint_state
 from moveit_msgs.msg import MoveItErrorCodes
-from moveit_msgs.srv import GetPositionIK
+from moveit_msgs.srv import GetPositionIK, GetPositionFK
 from drims2_motion_server.drims2_utils import transform_to_affine, pose_stamped_to_affine, affine_to_transform, transform_to_pose_stamped, build_affine
 import numpy as np
 
@@ -73,6 +73,7 @@ class MotionServer(Node):
                 callback_group=self.callback_group,
                 use_move_group_action=self.get_parameter('use_move_group_action').get_parameter_value().bool_value
             )
+
             self.moveit2.planner_id = self.get_parameter('planner_id').get_parameter_value().string_value
             # self.moveit2.max_velocity = self.get_parameter('max_velocity').get_parameter_value().double_value
             # self.moveit2.max_acceleration = self.get_parameter('max_acceleration').get_parameter_value().double_value
@@ -127,13 +128,23 @@ class MotionServer(Node):
             self.detach_object_callback
         )
         self.solve_ik_service = self.create_service(
-            SolveIK,
-            'solve_ik',
-            self.solve_ik_callback
+            GetIK,
+            'get_ik',
+            self.get_ik_callback
+        )
+        self.solve_ik_service = self.create_service(
+            GetFK,
+            'get_fk',
+            self.get_fk_callback
         )
         self.compute_ik_client = self.create_client(
             GetPositionIK,
             'compute_ik',
+            callback_group=self.callback_group
+        )
+        self.compute_fk_client = self.create_client(
+            GetPositionFK,
+            'compute_fk',
             callback_group=self.callback_group
         )
         if not self.compute_ik_client.wait_for_service(timeout_sec=10.0):
@@ -149,6 +160,9 @@ class MotionServer(Node):
         self.internal_util_rate = self.create_rate(10)
         self.T_ee_from_virtual = None
         self.get_logger().info("Motion server is ready to receive requests")
+
+        print("end effector: ", self.end_effector_name, flush=True)
+        print("virtual end effector: ", self.virtual_end_effector, flush=True)
 
     def init_virtual_to_ee_transform(self) -> Optional[TransformStamped]:
         """
@@ -281,7 +295,7 @@ class MotionServer(Node):
         M_base_goal[:3, 3] = p_goal
 
         T_base_goal = affine_to_transform(
-            M_base_goal, self.base_link_name, "ee_goal"
+            M_base_goal, self.base_link_name, "pose_goal_frame"
         )
 
         return transform_to_pose_stamped(T_base_goal)
@@ -527,6 +541,43 @@ class MotionServer(Node):
         result_code.val = motion_result.val if motion_result and partial_result else MoveItErrorCodes.FAILURE
         return result_code
 
+
+    def _compute_fk(self, joint_state: List[float]) -> Tuple[Optional[PoseStamped], MoveItErrorCodes]:
+        fk_req = GetPositionFK.Request()
+        fk_req.header.frame_id = self.base_link_name
+        fk_req.fk_link_names = [self.end_effector_name]
+        fk_req.robot_state.joint_state.name = self.joint_names
+        fk_req.robot_state.joint_state.position = joint_state
+
+        # Call the IK service
+        return_code = MoveItErrorCodes()
+        future = self.compute_fk_client.call_async(fk_req)
+
+        rate = self.create_rate(10)
+        timeout = 3.0
+        start_time = self.get_clock().now()
+        while not future.done() and (self.get_clock().now() - start_time).nanoseconds / 1e9 < timeout:
+            self.get_logger().info("Waiting for FK solution...")
+            rate.sleep()
+
+        if not future.done():
+            self.get_logger().warn("FK service call timeout.")
+            return_code.val = MoveItErrorCodes.FAILURE
+            return None, return_code
+
+        try:
+            response = future.result()
+        except Exception as ex:
+            self.get_logger().error(f"FK service call failed: {ex}")
+            return_code.val = MoveItErrorCodes.FAILURE
+            return None, return_code
+
+        if response.error_code.val != MoveItErrorCodes.SUCCESS or len(response.pose_stamped)==0:
+            self.get_logger().warn(f"FK failed with code {response.error_code.val}")
+            return None, response.error_code
+
+        return response.pose_stamped[0], response.error_code
+
     def _compute_ik(self, goal_pose: PoseStamped, seed: Optional[List[float]] = None) -> Tuple[Optional[List[float]], MoveItErrorCodes]:
         """
         Compute IK for the given pose.
@@ -673,6 +724,7 @@ class MotionServer(Node):
 
         # TODO: when a start state is specified, should the relative displacement be computed from the start state instead of the current state?
         if goal_handle.request.relative_motion:
+            print("HERE", flush=True)
             goal_pose = self._apply_relative_offset(goal_pose)
 
         self.broadcast_pose_goal_tf(goal_pose)  # For debugging purposes show the goal pose
@@ -697,7 +749,8 @@ class MotionServer(Node):
             last_ik_result_code = MoveItErrorCodes()
             for planning_attempt in range(max_motion_retries + 1):
                 robot_configuration = None
-                ik_result_code = MoveItErrorCodes.NO_IK_SOLUTION
+                ik_result_code = MoveItErrorCodes()
+                ik_result_code.val = MoveItErrorCodes.NO_IK_SOLUTION
                 for ik_attempt in range(max_ik_retries + 1):
                     # if joints_start is available, look for the closest IK solution
                     if joints_start is not None:
@@ -756,7 +809,7 @@ class MotionServer(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
-    def solve_ik_callback(self, request, response):
+    def get_ik_callback(self, request, response):
         self.get_logger().info("Solving IK.")
 
         goal_pose: PoseStamped = request.pose
@@ -780,6 +833,14 @@ class MotionServer(Node):
             self.get_logger().info(f"IK solution found: {robot_configuration}")
             response.result.val = ik_result_code.val
             response.ik_solution = robot_configuration
+        return response
+
+    def get_fk_callback(self, request, response):
+        self.get_logger().info("Computing FK.")
+        pose, error_code = self._compute_fk(request.joint_state)
+        response.result = error_code
+        if error_code.val == MoveItErrorCodes.SUCCESS and pose is not None:
+            response.pose = pose
         return response
 
     def attach_object_callback(self, request, response):

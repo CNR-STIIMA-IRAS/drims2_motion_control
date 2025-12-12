@@ -23,7 +23,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DiceIdentification.srv"
   "srv/AttachObject.srv"
   "srv/DetachObject.srv"
-  "srv/SolveIK.srv"
+  "srv/GetIK.srv"
+  "srv/GetFK.srv"
   DEPENDENCIES builtin_interfaces std_msgs geometry_msgs moveit_msgs
 )
 
