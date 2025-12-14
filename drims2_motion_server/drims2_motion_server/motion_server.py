@@ -132,7 +132,7 @@ class MotionServer(Node):
             'get_ik',
             self.get_ik_callback
         )
-        self.solve_ik_service = self.create_service(
+        self.solve_fk_service = self.create_service(
             GetFK,
             'get_fk',
             self.get_fk_callback

@@ -5,7 +5,7 @@ from rclpy.action import ActionClient
 from typing import Tuple, Optional, List
 
 from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
-from drims2_msgs.srv import AttachObject, DetachObject, SolveIK
+from drims2_msgs.srv import AttachObject, DetachObject, GetIK, GetFK
 
 from geometry_msgs.msg import PoseStamped
 from control_msgs.action import GripperCommand
@@ -67,7 +67,8 @@ class MotionClient(Node):
         self.gripper_client = ActionClient(self, GripperCommand, gripper_action_name)
         self.attach_object_client = self.create_client(AttachObject, 'attach_object')
         self.detach_object_client = self.create_client(DetachObject, 'detach_object')
-        self.solve_ik_client = self.create_client(SolveIK, 'solve_ik')
+        self.get_ik_client = self.create_client(GetIK, 'get_ik')
+        self.get_fk_client = self.create_client(GetFK, 'get_fk')
 
         self.last_planned_trj: JointTrajectory = None
 
@@ -343,10 +344,11 @@ class MotionClient(Node):
 
         return future.result().success
 
-    def solve_ik(self, pose: PoseStamped, seed: Optional[List[float]]=None) -> Tuple[MoveItErrorCodes, List[float]]:
+    def get_ik(self, pose: PoseStamped, seed: Optional[List[float]]=None) -> Tuple[MoveItErrorCodes, List[float]]:
         """Compute the inverse kinematics for the given pose
 
         Args:
+            seed: preferred joint state
             pose (PoseStamped): Pose of the robot.
 
         Returns:
@@ -355,17 +357,39 @@ class MotionClient(Node):
         Raises:
             RuntimeError: If the service is not available.
         """
-        if not self.solve_ik_client.wait_for_service(timeout_sec=5.0):
-            raise RuntimeError("SolveIK service not available")
+        if not self.get_ik_client.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError("GetIK service not available")
 
-        request = SolveIK.Request()
+        request = GetIK.Request()
         request.pose  = pose
         if seed is not None:
             request.seed = seed
-        future = self.solve_ik_client.call_async(request)
+        future = self.get_ik_client.call_async(request)
         rclpy.spin_until_future_complete(self, future)
 
         return future.result().result, future.result().ik_solution
+
+
+    def get_fk(self, joint_state: List[float]) -> Tuple[MoveItErrorCodes, PoseStamped]:
+        """Compute the forward kinematics for the given joint state
+
+        Args:
+            joint_state: Joint state to compute FK
+        Returns:
+            MoveItErrorCodes: Result code returned by the FK service
+            PoseStamped: end-effector pose corresponding to joint state.
+        Raises:
+            RuntimeError: If the service is not available.
+        """
+        if not self.get_fk_client.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError("GetFK service not available")
+
+        request = GetFK.Request()
+        request.joint_state  = joint_state
+        future = self.get_fk_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+
+        return future.result().result, future.result().pose
 
     def gripper_command(self, 
                         position: float, 
