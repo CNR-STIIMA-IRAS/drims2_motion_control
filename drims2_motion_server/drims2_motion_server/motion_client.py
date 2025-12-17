@@ -86,8 +86,8 @@ class MotionClient(Node):
             raise RuntimeError("AttachObject service not available")
         if not self.detach_object_client.wait_for_service(timeout_sec=10.0):
             raise RuntimeError("DetachObject service not available")
-        if not self.gripper_client.wait_for_server(timeout_sec=10.0):
-            raise RuntimeError("GripperCommand action server not available")
+        if not self.gripper_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().warn(f"Gripper action server {gripper_action_name} not found.")
 
     def move_to_pose(self, pose: PoseStamped, cartesian_motion: bool = False, relative_motion = False,
                      velocity_scaling: float = 1.0, acceleration_scaling: float = 1.0) -> MoveItErrorCodes:

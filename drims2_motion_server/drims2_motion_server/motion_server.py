@@ -1,21 +1,18 @@
-import time
 from typing import Optional, Tuple, List
 from threading import Thread
 
 import rclpy
-from moveit_msgs.action import ExecuteTrajectory
-from rclpy.action import ActionServer, CancelResponse
+from rclpy.action import ActionServer
 from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node
 
 from drims2_msgs.action import MoveToPose, MoveToJoint, PlanToPose, PlanToJoint, ExecutePlannedTrajectory
 from drims2_msgs.srv import AttachObject, DetachObject, GetIK, GetFK
 from geometry_msgs.msg import PoseStamped, TransformStamped
-from sympy.physics.units import acceleration
 from tf2_ros import Buffer, TransformListener, TransformException, TransformBroadcaster
 from trajectory_msgs.msg import JointTrajectory
 
-from pymoveit2 import MoveIt2, MoveIt2State
+from pymoveit2 import MoveIt2
 from pymoveit2.moveit2 import init_joint_state
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.srv import GetPositionIK, GetPositionFK
@@ -38,10 +35,11 @@ class MotionServer(Node):
         self.declare_parameter('cartesian_fraction_threshold', 0.001)
         self.declare_parameter('cartesian_jump_threshold', 0.001)
         self.declare_parameter('cartesian_avoid_collisions', True)
-        self.declare_parameter("max_velocity", 0.5)
-        self.declare_parameter("max_acceleration", 0.5)
+        self.declare_parameter("max_velocity", 1.0)
+        self.declare_parameter("max_acceleration", 1.0)
         self.declare_parameter("use_move_group_action", False)
         self.declare_parameter("allowed_planning_time", 2.0)
+        self.declare_parameter("joint_tolerance", 0.0001)
         self.declare_parameter("tolerance_position", 0.001)
         self.declare_parameter("tolerance_orientation", 0.001)
         self.declare_parameter("max_motion_retries", 3)
@@ -75,8 +73,6 @@ class MotionServer(Node):
             )
 
             self.moveit2.planner_id = self.get_parameter('planner_id').get_parameter_value().string_value
-            # self.moveit2.max_velocity = self.get_parameter('max_velocity').get_parameter_value().double_value
-            # self.moveit2.max_acceleration = self.get_parameter('max_acceleration').get_parameter_value().double_value
             self.moveit2.allowed_planning_time = self.get_parameter('allowed_planning_time').get_parameter_value().double_value
             self.moveit2.cartesian_avoid_collisions = self.get_parameter('cartesian_avoid_collisions').get_parameter_value().bool_value
         except RuntimeError as exception:
@@ -366,13 +362,14 @@ class MotionServer(Node):
             result_code.val = MoveItErrorCodes.INVALID_ROBOT_STATE
             return result_code
 
+        tolerance = self.get_parameter('joint_tolerance').get_parameter_value().double_value
         self.moveit2.max_velocity = self.global_velocity_scaling * velocity_scaling
         self.moveit2.max_acceleration = self.global_acceleration_scaling * acceleration_scaling
 
         for attempt in range(1, max_attempts + 1):
             self.get_logger().info(f"[Attempt {attempt}/{max_attempts}] Moving to configuration")
 
-            self.moveit2.move_to_configuration(robot_configuration, self.joint_names)
+            self.moveit2.move_to_configuration(robot_configuration, self.joint_names, tolerance=tolerance)
             partial_result = self.moveit2.wait_until_executed()
 
             motion_result = self.moveit2.get_last_execution_error_code()
@@ -762,6 +759,7 @@ class MotionServer(Node):
                                 if squared_norm < best_squared_norm:
                                     robot_configuration = tmp
                                     ik_result_code = tmp_ik_result_code
+                                    best_squared_norm = squared_norm
                     else:
                         robot_configuration, ik_result_code = self._compute_ik(goal_pose)
 
