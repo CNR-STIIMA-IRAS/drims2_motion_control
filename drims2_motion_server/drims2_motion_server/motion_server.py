@@ -41,6 +41,9 @@ class MotionServer(Node):
         self.declare_parameter("max_ik_retries", 3)
         self.declare_parameter("ik_timeout", 20)
         self.declare_parameter("virtual_end_effector", 'tip') # Used for better visual usage (think movements in tip frame) 
+        self.declare_parameter("workspace_min_corner", [-1.0, -1.0, -1.0])
+        self.declare_parameter("workspace_max_corner", [ 1.0,  1.0,  1.0])
+        self.declare_parameter("workspace_frame_id", "")
 
         self.move_group_name = self.get_parameter('move_group_name').get_parameter_value().string_value
         self.end_effector_name = self.get_parameter('end_effector_name').get_parameter_value().string_value
@@ -48,6 +51,11 @@ class MotionServer(Node):
         self.joint_names = self.get_parameter('joint_names').get_parameter_value().string_array_value
         self.max_motion_retries = self.get_parameter('max_motion_retries').get_parameter_value().integer_value
         self.virtual_end_effector = self.get_parameter('virtual_end_effector').get_parameter_value().string_value
+        ws_min = self.get_parameter("workspace_min_corner").get_parameter_value().double_array_value
+        ws_max = self.get_parameter("workspace_max_corner").get_parameter_value().double_array_value
+        ws_frame = self.get_parameter("workspace_frame_id").get_parameter_value().string_value
+        if not ws_frame:
+            ws_frame = self.base_link_name
 
         self.internal_node = Node(
             'motion_server_moveit2_internal_node', use_global_arguments=False, namespace=self.get_namespace())
@@ -68,6 +76,11 @@ class MotionServer(Node):
             self.moveit2.max_acceleration = self.get_parameter('max_acceleration').get_parameter_value().double_value
             self.moveit2.allowed_planning_time = self.get_parameter('allowed_planning_time').get_parameter_value().double_value
             self.moveit2.cartesian_avoid_collisions = self.get_parameter('cartesian_avoid_collisions').get_parameter_value().bool_value
+            self.moveit2.set_workspace_parameters(
+                min_corner=tuple(ws_min),
+                max_corner=tuple(ws_max),
+                frame_id=ws_frame,
+            )
         except RuntimeError as exception:
             raise exception
 

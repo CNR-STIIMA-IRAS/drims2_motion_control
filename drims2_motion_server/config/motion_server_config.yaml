@@ -10,6 +10,9 @@ motion_server_node:
       - 'ur10e_wrist_1_joint'
       - 'ur10e_wrist_2_joint'
       - 'ur10e_wrist_3_joint'
+    workspace_min_corner: [-5.0, -5.0, -5.0]
+    workspace_max_corner: [ 5.0,  5.0,  5.0]
+    workspace_frame_id: "base_link"
 
     cartesian_max_step: 0.0025
     cartesian_fraction_threshold: 0.0
@@ -17,3 +20,4 @@ motion_server_node:
     cartesian_avoid_collisions: True
     max_velocity: 0.5
     max_acceleration: 0.5
+    

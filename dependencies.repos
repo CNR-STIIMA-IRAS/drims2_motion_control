@@ -6,4 +6,4 @@ repositories:
   pymoveit2:
     type: git
     url: https://github.com/CNR-STIIMA-IRAS/pymoveit2.git
-    version: main
+    version: bugfix/mutex_resource_leaks
