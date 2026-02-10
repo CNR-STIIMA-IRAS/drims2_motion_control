@@ -1,0 +1,7 @@
+easy\_motion.motion\_client module
+==================================
+
+.. automodule:: easy_motion.motion_client
+   :members:
+   :undoc-members:
+   :show-inheritance:

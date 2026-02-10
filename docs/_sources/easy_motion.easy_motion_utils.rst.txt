@@ -1,0 +1,7 @@
+easy\_motion.easy\_motion\_utils module
+=======================================
+
+.. automodule:: easy_motion.easy_motion_utils
+   :members:
+   :undoc-members:
+   :show-inheritance:

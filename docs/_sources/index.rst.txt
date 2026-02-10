@@ -1,7 +1,7 @@
 .. GENERATED_CONTENT by rosdoc2.verbs.build.builders.sphinx_builder.
 
-drims2_motion_server
-====================
+easy_motion
+===========
 
 ROS 2 Motion server and client utilities for MoveIt2-based manipulation and end-effector support, including some utils.
 
