@@ -1,6 +1,6 @@
 #include <easy_motion_behavior_tree/leaves/detach_object.hpp>
 
-bool DetachObject::setRequest(Request::SharedPtr& request)
+bool DetachObject::setRequest(Request::SharedPtr & request)
 {
   std::string object_id;
   if (!getInput("object_id", object_id)) {
@@ -10,15 +10,12 @@ bool DetachObject::setRequest(Request::SharedPtr& request)
   return true;
 }
 
-BT::NodeStatus DetachObject::onResponseReceived(const Response::SharedPtr& response)
+BT::NodeStatus DetachObject::onResponseReceived(const Response::SharedPtr & response)
 {
   RCLCPP_INFO(logger(), "DetachObject service responce received.");
-  if(response->success)
-  {
+  if (response->success) {
     return BT::NodeStatus::SUCCESS;
-  }
-  else
-  {
+  } else {
     return BT::NodeStatus::FAILURE;
   }
 }

@@ -20,7 +20,9 @@ bool MoveToPose::setGoal(RosActionNode::Goal & goal)
   }
   bool cartesian_motion = false;
   if (!getInput("cartesian_motion", cartesian_motion)) {
-    RCLCPP_INFO(node_.lock()->get_logger(), "Missing parameter [cartesian_motion], set it as false by default");
+    RCLCPP_INFO(
+      node_.lock()->get_logger(),
+      "Missing parameter [cartesian_motion], set it as false by default");
   }
 
   // If pose_target is not set, build it from components
@@ -62,10 +64,11 @@ BT::NodeStatus MoveToPose::onResultReceived(const RosActionNode::WrappedResult &
   RCLCPP_INFO(node_.lock()->get_logger(), "%s Result: %d", name().c_str(), (wr.result->result).val);
   int code = wr.result->result.val;
 
-  if(code != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
-  {
-    moveit::core::MoveItErrorCode error(code);  // wrap 
-    RCLCPP_INFO(node_.lock()->get_logger(), "%s failed with error code: %d (%s)", name().c_str(), code, moveit::core::error_code_to_string(error).c_str());
+  if (code != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+    moveit::core::MoveItErrorCode error(code);  // wrap
+    RCLCPP_INFO(
+      node_.lock()->get_logger(), "%s failed with error code: %d (%s)",
+      name().c_str(), code, moveit::core::error_code_to_string(error).c_str());
     return BT::NodeStatus::FAILURE;
   }
   return BT::NodeStatus::SUCCESS;
@@ -73,7 +76,9 @@ BT::NodeStatus MoveToPose::onResultReceived(const RosActionNode::WrappedResult &
 
 BT::NodeStatus MoveToPose::onFailure(BT::ActionNodeErrorCode error)
 {
-  RCLCPP_ERROR( node_.lock()->get_logger(), "%s: onFailure with error: %s", name().c_str(), toStr(error) );
+  RCLCPP_ERROR(
+    node_.lock()->get_logger(), "%s: onFailure with error: %s", name().c_str(),
+    toStr(error) );
   return BT::NodeStatus::FAILURE;
 }
 

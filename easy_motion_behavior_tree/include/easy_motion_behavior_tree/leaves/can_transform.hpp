@@ -15,24 +15,26 @@
 class CanTransform : public BT::ConditionNode
 {
 public:
-  CanTransform(const std::string& name, const BT::NodeConfiguration& config)
+  CanTransform(const std::string & name, const BT::NodeConfiguration & config)
   : BT::ConditionNode(name, config)
   {
     node_ = config.blackboard->get<std::shared_ptr<rclcpp::Node>>("node");
-    tf_buffer_   = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
   // (facoltativo) puoi tenere anche il costruttore con RosNodeParams se ti serve altrove
-  CanTransform(const std::string& name,
-               const BT::NodeConfiguration& config,
-               const BT::RosNodeParams& params)
+  CanTransform(
+    const std::string & name,
+    const BT::NodeConfiguration & config,
+    const BT::RosNodeParams & params)
   : BT::ConditionNode(name, config), node_(params.nh)
   {
-    tf_buffer_   = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   }
-  static BT::PortsList providedPorts() {
+  static BT::PortsList providedPorts()
+  {
     return {
       BT::InputPort<std::string>("source_frame"),
       BT::InputPort<std::string>("target_frame"),
@@ -48,15 +50,16 @@ public:
     int timeout_ms = getInput<int>("timeout_ms").value();
 
     try {
-      if(timeout_ms > 0) {
-        auto ok = tf_buffer_->canTransform(target_frame, source_frame, tf2::TimePointZero,
-                                           std::chrono::milliseconds(timeout_ms));
+      if (timeout_ms > 0) {
+        auto ok = tf_buffer_->canTransform(
+          target_frame, source_frame, tf2::TimePointZero,
+          std::chrono::milliseconds(timeout_ms));
         return ok ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
       } else {
         auto ok = tf_buffer_->canTransform(target_frame, source_frame, tf2::TimePointZero);
         return ok ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
       }
-    } catch(...) {
+    } catch (...) {
       return BT::NodeStatus::FAILURE;
     }
   }

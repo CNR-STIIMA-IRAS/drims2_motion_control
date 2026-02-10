@@ -4,8 +4,8 @@
 class CheckDiceFace : public BT::ConditionNode
 {
 public:
-  CheckDiceFace(const std::string& name, const BT::NodeConfiguration& config)
-    : BT::ConditionNode(name, config)
+  CheckDiceFace(const std::string & name, const BT::NodeConfiguration & config)
+  : BT::ConditionNode(name, config)
   {}
 
   static BT::PortsList providedPorts()

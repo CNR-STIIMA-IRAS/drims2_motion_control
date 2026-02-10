@@ -30,23 +30,21 @@ bool GripperCommand::setGoal(RosActionNode::Goal & goal)
 BT::NodeStatus GripperCommand::onResultReceived(const RosActionNode::WrappedResult & wr)
 {
   RCLCPP_INFO(node_.lock()->get_logger(), "%s: onResultReceived.", name().c_str());
-  if(wr.result->reached_goal)
-  {
-    return  BT::NodeStatus::SUCCESS;
-  }
-  else if (wr.result->stalled)
-  {
+  if (wr.result->reached_goal) {
+    return BT::NodeStatus::SUCCESS;
+  } else if (wr.result->stalled) {
     RCLCPP_INFO(node_.lock()->get_logger(), "Gripper stalled");
     return BT::NodeStatus::SUCCESS;
-  }
-  else{
+  } else {
     return BT::NodeStatus::FAILURE;
   }
 }
 
 BT::NodeStatus GripperCommand::onFailure(BT::ActionNodeErrorCode error)
 {
-  RCLCPP_ERROR( node_.lock()->get_logger(), "%s: onFailure with error: %s", name().c_str(), toStr(error) );
+  RCLCPP_ERROR(
+    node_.lock()->get_logger(), "%s: onFailure with error: %s", name().c_str(),
+    toStr(error) );
   return BT::NodeStatus::FAILURE;
 }
 
