@@ -1,0 +1,41 @@
+name: humble
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-jammy-ros-humble-desktop-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+          
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: install python dep
+        run: |
+          python3 -m pip install -r easy_motion/requirements.txt
+
+      - name: build and test
+        uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          package-name: easy_motion_msgs easy_motion easy_motion_behavior_tree
+          target-ros2-distro: humble
+          colcon-defaults: |
+            {
+              "test": {
+                "parallel-workers" : 1
+              }
+            }
+          vcs-repo-file-url: https://raw.githubusercontent.com/CNR-STIIMA-IRAS/easy_motion/refs/heads/main/dependencies.repos
