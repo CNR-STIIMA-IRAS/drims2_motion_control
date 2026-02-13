@@ -1,12 +1,12 @@
-# DRIMS2 Motion Control
+# Easy Motion
 
-This repository is part of the **DRIMS2 Summer School** and provides a motion control stack based on ROS 2 and MoveIt. It includes behavior tree integration, motion command interfaces, and an action server for handling motion requests.
+This repository is initially developed for **DRIMS2 Summer School** as a simplified interface for planinng and control, and provides a motion control stack based on ROS 2 and MoveIt (through Pymoveit2). It includes behavior tree integration, motion command interfaces, and an action server for handling motion requests.
 
 ## Repository Structure
 
 This repository contains the following ROS 2 packages:
 
-- **`drims2_msgs`**  
+- **`easy_motion_msgs`**  
   Contains the ROS 2 interface definitions for motion commands. Key interfaces include:
   - Actions:
     - `MoveToPose`
@@ -17,15 +17,15 @@ This repository contains the following ROS 2 packages:
     - `DiceIdentification`
 
 
-- **`drims2_motion_server`**  
+- **`easy_motion`**  
   Implements the motion **action/service server** that:
   - Receives `MoveToPose` and `MoveToJoint` requests.
   - Handles `AttachObject` and `DetachObject` service calls.
   - Interfaces with **MoveIt** to plan and execute robot motions.
 
-  🔗 [Documentation](https://cnr-stiima-iras.github.io/drims2_motion_control/index.html)
+  🔗 [Documentation](https://cnr-stiima-iras.github.io/easy_motion/index.html)
 
-- **`drims2_behavior_tree`**  
+- **`easy_motion_behavior_tree`**  
   Integrates a **Behavior Tree engine** to control task execution. This package contains:
   - Custom **leaf nodes** for motion commands.
   - Logic for behavior tree loading and execution.
@@ -35,8 +35,8 @@ This repository contains the following ROS 2 packages:
 ### Clone the Repository
 
 ```bash
-mkdir -p ~/projects/drims2_ws/src
-cd ~/projects/drims2_ws/src
-git clone https://github.com/CNR-STIIMA-IRAS/drims2_motion_control.git
-vcs import < drims2_motion_control/dependencies.repos
+mkdir -p ~/projects/easy_ws/src
+cd ~/projects/easy_ws/src
+git clone https://github.com/CNR-STIIMA-IRAS/easy_motion.git
+vcs import < easy_motion/dependencies.repos
 ```

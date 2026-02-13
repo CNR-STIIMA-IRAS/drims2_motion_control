@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>easy_motion</name>
+  <version>0.0.0</version>
+  <description>ROS 2 Motion server and client utilities for MoveIt2-based manipulation and end-effector support, including some utils.</description>
+  <maintainer email="samuele.sandrini@stiima.cnr.it">kalman</maintainer>
+  <license>Apache License 2.0</license>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <depend>easy_motion_msgs</depend>
+  
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

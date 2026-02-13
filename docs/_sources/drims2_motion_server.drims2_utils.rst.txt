@@ -1,7 +1,0 @@
-drims2\_motion\_server.drims2\_utils module
-===========================================
-
-.. automodule:: drims2_motion_server.drims2_utils
-   :members:
-   :undoc-members:
-   :show-inheritance:

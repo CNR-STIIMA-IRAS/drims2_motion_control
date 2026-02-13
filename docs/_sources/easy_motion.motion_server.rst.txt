@@ -1,0 +1,7 @@
+easy\_motion.motion\_server module
+==================================
+
+.. automodule:: easy_motion.motion_server
+   :members:
+   :undoc-members:
+   :show-inheritance:
